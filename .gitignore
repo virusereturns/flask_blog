@@ -1,3 +1,5 @@
 *.pyc
 __pycache__/
 instance/
+static/profile_pics/*
+!static/profile_pics/default.jpg
