@@ -2,10 +2,10 @@ import os
 import secrets
 from PIL import Image
 from datetime import datetime, UTC
-from flask import Flask, render_template, url_for, flash, redirect, request
+from flask import Flask, render_template, url_for, flash, redirect, request, abort
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileAllowed
-from wtforms import StringField, PasswordField, SubmitField, BooleanField
+from wtforms import StringField, PasswordField, SubmitField, BooleanField, TextAreaField
 from wtforms.validators import DataRequired, Length, Email, EqualTo
 from wtforms import ValidationError
 from flask_bootstrap import Bootstrap5
@@ -105,13 +105,20 @@ class UpdateAccountForm(FlaskForm):
                 raise ValidationError('That email is taken. Please choose a different one.')
 
 
+class CreatePostForm(FlaskForm):
+    title = StringField('Title', validators=[DataRequired()])
+    content = TextAreaField('Content', validators=[DataRequired()])
+    submit = SubmitField('Post', render_kw={"class": "btn btn-primary"})
+
+
 # Routes
 
 
 @app.route('/')
 @app.route('/home/')
 def home():
-    return render_template('home.html')
+    posts = Post.query.all()
+    return render_template('home.html', posts=posts)
 
 
 @app.route('/about/')
@@ -192,6 +199,46 @@ def account():
         form.email.data = current_user.email
     image_file = url_for('static', filename='profile_pics/' + current_user.image_file)
     return render_template('account.html', image_file=image_file, form=form)
+
+
+@app.route('/post/new/', methods=['GET', 'POST'])
+@login_required
+def new_post():
+    form = CreatePostForm()
+    if form.validate_on_submit():
+        post = Post(title=form.title.data, content=form.content.data, author=current_user)
+        db.session.add(post)
+        db.session.commit()
+        flash(f'Your post has been created!', 'success')
+        return redirect(url_for('home'))
+    return render_template('posts/create_post.html', form=form, title="New Post")
+
+
+@app.route('/post/<int:post_id>/')
+def post_detail(post_id):
+    post = Post.query.get_or_404(post_id)
+    return render_template('posts/post.html', post=post)
+
+
+@app.route('/post/<int:post_id>/update/', methods=['GET', 'POST'])
+@login_required
+def update_post(post_id):
+    post = Post.query.get_or_404(post_id)
+    if post.author != current_user:
+        flash(f'You are not authorized to update this post', 'danger')
+        abort(403)
+        # return redirect(url_for('home'))  # Maybe use this later
+    form = CreatePostForm()
+    if form.validate_on_submit():
+        post.title = form.title.data
+        post.content = form.content.data
+        db.session.commit()
+        flash(f'Your post has been updated!', 'success')
+        return redirect(url_for('post_detail', post_id=post.id))
+    elif request.method == 'GET':
+        form.title.data = post.title
+        form.content.data = post.content
+    return render_template('posts/create_post.html', form=form, title='Update Post')
 
 
 if __name__ == '__main__':
